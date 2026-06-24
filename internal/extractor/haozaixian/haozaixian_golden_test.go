@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nichuanfang/medigo/internal/cookie"
 	"github.com/nichuanfang/medigo/internal/extractor"
 )
 
@@ -23,7 +22,7 @@ func TestExtractMock(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	store := cookie.NewStore()
+
 	_, err := extractor.Match(srv.URL + "/course/test")
 	// The mock URL may not match the extractor pattern; this test validates
 	// the fixture parsing path once a real URL pattern + fixture are provided.
