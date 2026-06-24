@@ -15,6 +15,7 @@
 | `Htknow_Course.py:42 series_info_url = 'https://saas.clientapi.htknow.com/course/series_course_list'` | `htknow.go:29 seriesInfoURL` | ✓ |
 | `Htknow_Course.py:43 video_info_url = 'https://saas.clientapi.htknow.com/course/column_play_details'` | `htknow.go:30 videoInfoURL` | ✓ |
 | `Htknow_Course.py:44 pc_video_info_url = 'https://saas.clientapi.htknow.com/pc_view/course/column_play_details'` | `htknow.go:31 pcVideoInfoURL` | ✓ |
+| `Htknow_Course.py:45-48 answer_tag_url / answer_num_url / answer_list_url / answer_create_paper_url` | `htknow.go` `answerTagURL` / `answerNumURL` / `answerListURL` / `answerCreatePaperURL` | ✓ |
 
 ## 认证 / Header
 
@@ -42,11 +43,11 @@
 |---|---|---|
 | cookie `user.id`, `token`, `custom_id`, `base_KEY`, `wechatList/appletList/ksList.child_list.id` | helpers `userIDFromCookie`, `cookieMap`, `accountIDs` | ✓ |
 | `learn/list_v2 -> result[] -> product_id/main_product_id/type_desc/title` | `courseList` lines 142-154 | ✓ |
-| `single_detail -> result.detail.product_token/pay_content` | `singleSources` lines 183-188 | ✓ |
+| `single_detail -> result.detail.product_token/pay_content` | `singleSources` lines 183-188; `mediaFromSources` keeps URL and HTML-only items | ✓ |
 | `playback_list -> result.list[].video_url/title` | `liveSources` lines 197-203 | ✓ |
-| `column_course_list -> result.list[].product_token/pay_content/id/series_id/product_type/title` | `columnSources` + `sourceFromProduct` lines 219-258 | ✓ |
+| `column_course_list -> result.list[].product_token/pay_content/id/series_id/product_type/title` | `columnSources` + `sourceFromProduct` lines 219-258; HTML-only `pay_content` becomes a `document` stream | ✓ |
 | `series_course_list -> result.list[].article_list[]` | `seriesSources` lines 237-244 | ✓ |
-| `column_play_details -> result.article_detail.product_token/pay_content` and `result.detail.*` | `fetchProductURL` lines 277-280 | ✓ |
+| `column_play_details -> result.article_detail.product_token/pay_content` and `result.detail.*` | `fetchProductURL` lines 277-280; HTML-only content preserved via `data:text/html` stream and `Extra.html_content` | ✓ |
 | `_get_video_url`: product_token base64 JSON `value/iv`, `base_KEY`, AES CBC decrypt, URL starts with `http` | `videoURL` lines 289-322 | ✓ |
 
 ## 阻塞步骤

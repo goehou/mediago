@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 
@@ -19,16 +20,20 @@ import (
 const (
 	refererURL = "https://learn.htknow.com"
 
-	checkCookieURL = "https://saas.clientapi.htknow.com/pc_view/learn/list"
-	courseListURL  = "https://saas.clientapi.htknow.com/learn/list_v2"
-	singleURL      = "https://saas.clientapi.htknow.com/course/single_detail"
-	columnURL      = "https://saas.clientapi.htknow.com/course/column_course_detail"
-	seriesURL      = "https://saas.clientapi.htknow.com/course/series_course_detail"
-	liveInfoURL    = "https://saas.clientapi.htknow.com/live/live_wx/playback_list"
-	columnInfoURL  = "https://saas.clientapi.htknow.com/course/column_course_list"
-	seriesInfoURL  = "https://saas.clientapi.htknow.com/course/series_course_list"
-	videoInfoURL   = "https://saas.clientapi.htknow.com/course/column_play_details"
-	pcVideoInfoURL = "https://saas.clientapi.htknow.com/pc_view/course/column_play_details"
+	checkCookieURL       = "https://saas.clientapi.htknow.com/pc_view/learn/list"
+	courseListURL        = "https://saas.clientapi.htknow.com/learn/list_v2"
+	singleURL            = "https://saas.clientapi.htknow.com/course/single_detail"
+	columnURL            = "https://saas.clientapi.htknow.com/course/column_course_detail"
+	seriesURL            = "https://saas.clientapi.htknow.com/course/series_course_detail"
+	liveInfoURL          = "https://saas.clientapi.htknow.com/live/live_wx/playback_list"
+	columnInfoURL        = "https://saas.clientapi.htknow.com/course/column_course_list"
+	seriesInfoURL        = "https://saas.clientapi.htknow.com/course/series_course_list"
+	videoInfoURL         = "https://saas.clientapi.htknow.com/course/column_play_details"
+	pcVideoInfoURL       = "https://saas.clientapi.htknow.com/pc_view/course/column_play_details"
+	answerTagURL         = "https://saas.clientapi.htknow.com/pc_view/quest/get_quest_tag_list"
+	answerNumURL         = "https://saas.clientapi.htknow.com/pc_view/quest/get_quest_num_list"
+	answerListURL        = "https://saas.clientapi.htknow.com/pc_view/quest/get_quest_list"
+	answerCreatePaperURL = "https://saas.clientapi.htknow.com/pc_view/quest/create_question_paper"
 )
 
 var patterns = []string{`(?:[\w-]+\.)?htknow\.com/`}
@@ -253,7 +258,13 @@ func (x *htCtx) sourceFromProduct(c course, it map[string]any, name string) sour
 	htmlText := str(it["pay_content"])
 	url := x.videoURL(token)
 	if url == "" {
-		url, htmlText = x.fetchProductURL(c, str(it["series_id"]), str(it["id"]), str(it["product_type"]))
+		fetchedURL, fetchedHTML := x.fetchProductURL(c, str(it["series_id"]), str(it["id"]), str(it["product_type"]))
+		if fetchedURL != "" {
+			url = fetchedURL
+		}
+		if fetchedHTML != "" {
+			htmlText = fetchedHTML
+		}
 	}
 	return source{name: name, url: url, kind: c.typ, html: htmlText}
 }
@@ -343,19 +354,24 @@ func (x *htCtx) postJSON(endpoint string, payload map[string]any) (map[string]an
 func mediaFromSources(title string, srcs []source) (*extractor.MediaInfo, error) {
 	var entries []*extractor.MediaInfo
 	mk := func(s source) *extractor.MediaInfo {
+		extra := map[string]any{"html_content": s.html}
+		if strings.TrimSpace(s.url) == "" {
+			htmlURL := "data:text/html;charset=utf-8," + url.PathEscape(s.html)
+			return &extractor.MediaInfo{Site: "htknow", Title: s.name, Streams: map[string]extractor.Stream{"document": {Quality: firstNonEmpty(s.kind, "html"), URLs: []string{htmlURL}, Format: "html", Headers: map[string]string{"Referer": refererURL}}}, Extra: extra}
+		}
 		format := strings.TrimPrefix(strings.ToLower(path.Ext(strings.Split(s.url, "?")[0])), ".")
 		if format == "" {
 			format = "mp4"
 		}
-		return &extractor.MediaInfo{Site: "htknow", Title: s.name, Streams: map[string]extractor.Stream{"default": {Quality: s.kind, URLs: []string{s.url}, Format: format, Headers: map[string]string{"Referer": refererURL}}}, Extra: map[string]any{"html_content": s.html}}
+		return &extractor.MediaInfo{Site: "htknow", Title: s.name, Streams: map[string]extractor.Stream{"default": {Quality: s.kind, URLs: []string{s.url}, Format: format, Headers: map[string]string{"Referer": refererURL}}}, Extra: extra}
 	}
 	for _, src := range srcs {
-		if src.url != "" {
+		if strings.TrimSpace(src.url) != "" || strings.TrimSpace(src.html) != "" {
 			entries = append(entries, mk(src))
 		}
 	}
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("htknow: no playable video URL")
+		return nil, fmt.Errorf("htknow: no playable video URL or html_content")
 	}
 	if len(entries) == 1 {
 		entries[0].Title = firstNonEmpty(entries[0].Title, title)

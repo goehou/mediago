@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	course_url     = "https://api.gaotu.cn/studyPlatform/v1/unit/clazz/list?isDebounce=true&os=h5-pc&p_client=1"
-	info_url       = "https://interactive.gaotu.cn/live/api/studyCenter/v1/user/pc/clazz/detail"
-	video_url      = "https://api.gaotu.cn/live/zplan/login/videoLive"
-	live_url       = "https://interactive.gaotu.cn/live/api/live/zplan/playbackWeb"
-	video_play_url = "https://api.wenzaizhibo.com/web/video/getPlayUrl?vid=%s&partner_id=%s&user_number=%s&expires_in=%s&user_role=%s&timestamp=%s&is_encrypted=%s&sign=%s"
-	live_play_url  = "https://api.wenzaizhibo.com/web/playback/getPlaybackInfoV4?room_id=%s&partner_id=%s&user_number=%s&expires_in=%s&user_role=%s&timestamp=%s&is_encrypted=%s&sign=%s&playlist=%s"
-	source_url     = "https://interactive.gaotu.cn/live/api/pan/listDir"
-	file_url       = "https://interactive.gaotu.cn/live/api/pan/file"
-	price_url      = "https://api.gaotu.cn/cs/api/product/course/detailButton?productSpuNumber=%s"
+	courseURLFormat = "https://%s/studyPlatform/v1/unit/clazz/list?isDebounce=true&os=h5-pc&p_client=%s"
+	infoURLFormat   = "https://%s/live/api/studyCenter/v1/user/pc/clazz/detail"
+	videoURLFormat  = "https://%s/live/zplan/login/videoLive"
+	liveURLFormat   = "https://%s/live/api/live/zplan/playbackWeb"
+	sourceURLFormat = "https://%s/live/api/pan/listDir"
+	fileURLFormat   = "https://%s/live/api/pan/file"
+	priceURLFormat  = "https://%s/cs/api/product/course/detailButton?productSpuNumber=%%s"
+	video_play_url  = "https://api.wenzaizhibo.com/web/video/getPlayUrl?vid=%s&partner_id=%s&user_number=%s&expires_in=%s&user_role=%s&timestamp=%s&is_encrypted=%s&sign=%s"
+	live_play_url   = "https://api.wenzaizhibo.com/web/playback/getPlaybackInfoV4?room_id=%s&partner_id=%s&user_number=%s&expires_in=%s&user_role=%s&timestamp=%s&is_encrypted=%s&sign=%s&playlist=%s"
 )
 
 var patterns = []string{`(?:[\w-]+\.)?(?:gaotu\.cn|gaotu100\.com|gtgz\.cn|naiyouxuexi\.com|wenzaizhibo\.com)/`}
@@ -33,6 +33,21 @@ func init() {
 type Gaotu struct{}
 
 func (g *Gaotu) Patterns() []string { return patterns }
+
+type gaotuEndpoints struct {
+	referer         string
+	apiHost         string
+	interactiveHost string
+	pClient         string
+}
+
+func (e gaotuEndpoints) courseURL() string { return fmt.Sprintf(courseURLFormat, e.apiHost, e.pClient) }
+func (e gaotuEndpoints) infoURL() string   { return fmt.Sprintf(infoURLFormat, e.interactiveHost) }
+func (e gaotuEndpoints) videoURL() string  { return fmt.Sprintf(videoURLFormat, e.apiHost) }
+func (e gaotuEndpoints) liveURL() string   { return fmt.Sprintf(liveURLFormat, e.interactiveHost) }
+func (e gaotuEndpoints) sourceURL() string { return fmt.Sprintf(sourceURLFormat, e.interactiveHost) }
+func (e gaotuEndpoints) fileURL() string   { return fmt.Sprintf(fileURLFormat, e.interactiveHost) }
+func (e gaotuEndpoints) priceURL() string  { return fmt.Sprintf(priceURLFormat, e.apiHost) }
 
 var (
 	clazzRe = regexp.MustCompile(`(?i)(?:clazzNumber|clazzId|courseId|productSpuNumber|cid)=([A-Za-z0-9_-]+)`)
@@ -65,22 +80,23 @@ func (g *Gaotu) Extract(rawURL string, opts *extractor.ExtractOpts) (*extractor.
 
 	c := util.NewClient()
 	c.SetCookieJar(opts.Cookies)
+	endpoints := endpointsFor(rawURL)
 	headers := map[string]string{
 		"Accept":       "application/json, text/plain, */*",
-		"Referer":      refererFor(rawURL),
-		"Origin":       strings.TrimRight(refererFor(rawURL), "/"),
+		"Referer":      endpoints.referer,
+		"Origin":       strings.TrimRight(endpoints.referer, "/"),
 		"Content-Type": "application/json;charset=UTF-8",
 	}
 
 	if id.Live != "" || id.Room != "" {
-		entry, err := resolveLesson(c, headers, id, "gaotu_"+firstNonEmpty(id.Live, id.Room))
+		entry, err := resolveLesson(c, headers, endpoints, id, "gaotu_"+firstNonEmpty(id.Live, id.Room))
 		if err != nil {
 			return nil, err
 		}
 		return entry, nil
 	}
 
-	entries, title, err := resolveCourse(c, headers, id)
+	entries, title, err := resolveCourse(c, headers, endpoints, id)
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +106,8 @@ func (g *Gaotu) Extract(rawURL string, opts *extractor.ExtractOpts) (*extractor.
 	return &extractor.MediaInfo{Site: "gaotu", Title: util.SanitizeFilename(firstNonEmpty(title, "gaotu_"+id.Clazz)), Entries: entries}, nil
 }
 
-func resolveCourse(c *util.Client, headers map[string]string, id ids) ([]*extractor.MediaInfo, string, error) {
-	payload, err := postJSON(c, info_url, map[string]any{"platformType": 3, "clazzNumber": id.Clazz}, headers)
+func resolveCourse(c *util.Client, headers map[string]string, endpoints gaotuEndpoints, id ids) ([]*extractor.MediaInfo, string, error) {
+	payload, err := postJSON(c, endpoints.infoURL(), map[string]any{"platformType": 3, "clazzNumber": id.Clazz}, headers)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch gaotu clazz detail: %w", err)
 	}
@@ -103,7 +119,7 @@ func resolveCourse(c *util.Client, headers map[string]string, id ids) ([]*extrac
 	nodes := collectLessons(payload)
 	if len(nodes) == 0 {
 		// Source also opens course_url while selecting purchased classes; keep that API path covered.
-		if listPayload, err := postJSON(c, course_url, map[string]any{"searchTypeList": []any{}, "modulePage": map[string]any{"pageNum": 1}}, headers); err == nil {
+		if listPayload, err := postJSON(c, endpoints.courseURL(), map[string]any{"searchTypeList": []any{}, "modulePage": map[string]any{"pageNum": 1}}, headers); err == nil {
 			if title == id.Clazz {
 				title = firstNonEmpty(pickTitle(listPayload), title)
 			}
@@ -120,7 +136,7 @@ func resolveCourse(c *util.Client, headers map[string]string, id ids) ([]*extrac
 		seen[node.ID] = true
 		lessonID := id
 		lessonID.Live = node.ID
-		entry, err := resolveLesson(c, headers, lessonID, node.Title)
+		entry, err := resolveLesson(c, headers, endpoints, lessonID, node.Title)
 		if err == nil {
 			entries = append(entries, entry)
 		}
@@ -128,16 +144,16 @@ func resolveCourse(c *util.Client, headers map[string]string, id ids) ([]*extrac
 	return entries, title, nil
 }
 
-func resolveLesson(c *util.Client, headers map[string]string, id ids, fallbackTitle string) (*extractor.MediaInfo, error) {
+func resolveLesson(c *util.Client, headers map[string]string, endpoints gaotuEndpoints, id ids, fallbackTitle string) (*extractor.MediaInfo, error) {
 	if id.Role == "" {
 		id.Role = "3"
 	}
 	payloads := make([]any, 0, 2)
 	if id.Live != "" {
-		if p, err := postJSON(c, video_url, map[string]any{"liveId": id.Live, "sid": id.SID, "roleType": id.Role}, headers); err == nil {
+		if p, err := postJSON(c, endpoints.videoURL(), map[string]any{"liveId": id.Live, "sid": id.SID, "roleType": id.Role}, headers); err == nil {
 			payloads = append(payloads, p)
 		}
-		if p, err := postJSON(c, live_url, map[string]any{"liveId": id.Live, "roleType": id.Role}, headers); err == nil {
+		if p, err := postJSON(c, endpoints.liveURL(), map[string]any{"liveId": id.Live, "roleType": id.Role}, headers); err == nil {
 			payloads = append(payloads, p)
 		}
 	}

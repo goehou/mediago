@@ -122,17 +122,38 @@ func pickTitle(v any) string {
 	return ""
 }
 
-func refererFor(raw string) string {
-	if strings.Contains(raw, "gaotu100.com") {
-		return "https://gaotu100.com"
+func endpointsFor(raw string) gaotuEndpoints {
+	low := strings.ToLower(raw)
+	if strings.Contains(low, "gaotu100.com") {
+		return gaotuEndpoints{
+			referer:         "https://gaotu100.com",
+			apiHost:         "api.gaotu100.com",
+			interactiveHost: "interactive.gaotu100.com",
+			pClient:         "2",
+		}
 	}
-	if strings.Contains(raw, "gtgz.cn") {
-		return "https://www.gtgz.cn"
+	if strings.Contains(low, "gtgz.cn") {
+		return gaotuEndpoints{
+			referer:         "https://www.gtgz.cn",
+			apiHost:         "api.gtgz.cn",
+			interactiveHost: "interactive.gtgz.cn",
+			pClient:         "8",
+		}
 	}
-	if strings.Contains(raw, "naiyouxuexi.com") {
-		return "https://www.naiyouxuexi.com"
+	if strings.Contains(low, "naiyouxuexi.com") {
+		return gaotuEndpoints{
+			referer:         "https://www.naiyouxuexi.com",
+			apiHost:         "api.naiyouxuexi.com",
+			interactiveHost: "interactive.naiyouxuexi.com",
+			pClient:         "18",
+		}
 	}
-	return "https://www.gaotu.cn"
+	return gaotuEndpoints{
+		referer:         "https://www.gaotu.cn",
+		apiHost:         "api.gaotu.cn",
+		interactiveHost: "interactive.gaotu.cn",
+		pClient:         "1",
+	}
 }
 
 func q(s string) string { return url.QueryEscape(s) }

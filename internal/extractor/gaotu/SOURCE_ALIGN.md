@@ -4,12 +4,13 @@
 
 | .cdc.py 行 | gaotu.go 行/名 | 一致? |
 |---|---|---|
-| Gaotu_Course.py:37 `course_url = 'https://api.gaotu.cn/studyPlatform/v1/unit/clazz/list?isDebounce=true&os=h5-pc&p_client=1'` | `course_url` | ✓ |
-| Gaotu_Course.py:38 `info_url = 'https://interactive.gaotu.cn/live/api/studyCenter/v1/user/pc/clazz/detail'` | `info_url` | ✓ |
-| Gaotu_Course.py:39 `video_url = 'https://api.gaotu.cn/live/zplan/login/videoLive'` | `video_url` | ✓ |
-| Gaotu_Course.py:40 `live_url = 'https://interactive.gaotu.cn/live/api/live/zplan/playbackWeb'` | `live_url` | ✓ |
+| Gaotu_Course.py:37 `course_url = 'https://api.gaotu.cn/studyPlatform/v1/unit/clazz/list?isDebounce=true&os=h5-pc&p_client=1'` | `courseURLFormat` + `endpointsFor()` | ✓ |
+| Gaotu_Tutu.py:41 / Gaotu_Gaozhong.py:41 / Gaotu_Suyang.py:41 brand-specific `course_url` | `endpointsFor()` selects `api.gaotu100.com` / `api.gtgz.cn` / `api.naiyouxuexi.com` and `p_client=2/8/18` | ✓ |
+| Gaotu_Course.py:38 `info_url = 'https://interactive.gaotu.cn/live/api/studyCenter/v1/user/pc/clazz/detail'` | `infoURLFormat` + `endpointsFor()` | ✓ |
+| Gaotu_Course.py:39 `video_url = 'https://api.gaotu.cn/live/zplan/login/videoLive'` | `videoURLFormat` + `endpointsFor()` | ✓ |
+| Gaotu_Course.py:40 `live_url = 'https://interactive.gaotu.cn/live/api/live/zplan/playbackWeb'` | `liveURLFormat` + `endpointsFor()` | ✓ |
 | Gaotu_Course.py:41-42 Wenzai `getPlayUrl` / `getPlaybackInfoV4` | `video_play_url`, `live_play_url` with `%s` | ✓ |
-| Gaotu_Course.py:43-45 pan/file/price APIs | `source_url`, `file_url`, `price_url` | ✓ |
+| Gaotu_Course.py:43-45 pan/file/price APIs | `sourceURLFormat`, `fileURLFormat`, `priceURLFormat` | ✓ |
 
 ## HTTP 调用
 
