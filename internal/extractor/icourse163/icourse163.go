@@ -7,12 +7,13 @@
 //  4. resourceRpcBean.getResourceTokenV2.rpc + vod.study.163.com/eds/api/v1/vod/video
 //     fallback chain (md5 signed) when no direct mp4 is exposed
 //
-// Only the most common /course/CID-NNN[?tid=MMM] flow is implemented; kaopei
-// (考研培优) URLs, column/textbook/youdao subsites use distinct flows and are
-// rejected up front.
+// The main /course/CID-NNN[?tid=MMM] flow, kaopei/kaoyan term/live flow, and
+// columnBean flow are implemented. textbook/youdao subsites use distinct
+// products and remain outside this extractor.
 package icourse163
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -37,6 +38,17 @@ const (
 	videoInfoURL = "https://vod.study.163.com/eds/api/v1/vod/video"
 	subURL       = "https://www.icourse163.org/mm-course/web/j/mocCourseBean.getVideoSubtitle.rpc?csrfKey="
 	timestampURL = "https://acs.m.taobao.com/gw/mtop.common.getTimestamp/"
+
+	kaoyanCourseURL   = "https://www.icourse163.org/course/kaoyan-"
+	kaoyanNewInfosURL = "https://www.icourse163.org/web/j/courseBean.getLastLearnedMocTermDto.rpc?csrfKey="
+	kaoyanTermURL     = "https://kaoyan.icourse163.org/course/terms/"
+	kaoyanLiveURL     = "https://www.icourse163.org/live/"
+	kaoyanPayURL      = "https://kaoyan.icourse163.org/web/j/kaoyanCourseBean.getKyCourseInfoBtStatusVo.rpc?csrfKey=%s"
+
+	columnPageURL  = "https://www.icourse163.org/columns/"
+	columnTermURL  = "https://www.icourse163.org/web/j/columnBean.getMocLessonBaseDtos.rpc?csrfKey="
+	columnInfosURL = "https://www.icourse163.org/web/j/columnBean.getLessonUnitBaseVoByLessonId.rpc?csrfKey="
+	columnAudioURL = "https://www.icourse163.org/web/j/columnBean.getArticleInfoVo.rpc?csrfKey="
 )
 
 // Source URL constants preserved from Mooc163 sibling flows that this package
@@ -50,16 +62,21 @@ const (
 	youdao_test_course_url = "https://ke.youdao.com/course/detail/220912?loginBack=true&Pdt=jpkWeb"
 )
 
-// Patterns chosen to intersect with Mooc_Config.courses_re['Icourse163_Mooc']:
+// Main-course pattern chosen to intersect with Mooc_Config.courses_re['Icourse163_Mooc']:
 //
 //	\s*https?://www\.icourse163\.org/(?P<mooc>.*?)((learn)|(course))/(?P<cid1>(?!kaopei-)[\%\w-]*-\d+)(.*?tid=(?P<tid1>\d+))?
 //
-// Go RE2 has no negative lookahead so the kaopei- exclusion is enforced in code.
+// Kaoyan and Column sibling patterns are registered below and routed before
+// the main-course parser.
 var patterns = []string{
 	`(?:www\.)?icourse163\.org/.*?(?:learn|course)/[%\w-]+-\d+`,
+	`(?:www\.)?icourse163\.org/columns/\d+\.htm`,
+	`(?:www\.)?icourse163\.org/column/learn/\d+(?:/.*?\.htm)?`,
+	`kaoyan\.icourse163\.org/course/terms/\d+.*course[Ii]d=\d+`,
+	`(?:www\.)?icourse163\.org/live/.*?\d+\.htm`,
 }
 
-var urlRe = regexp.MustCompile(
+var moocURLRe = regexp.MustCompile(
 	`^https?://www\.icourse163\.org/(?P<mooc>[^/]*?/?)(?:learn|course)/(?P<cid>[%\w-]+-\d+)(?:.*?tid=(?P<tid>\d+))?`,
 )
 
@@ -79,22 +96,25 @@ func (i *ICourse163) Extract(rawURL string, opts *extractor.ExtractOpts) (*extra
 	if opts == nil || opts.Cookies == nil {
 		return nil, fmt.Errorf("icourse163 requires login cookies (use --cookies or --cookies-from-browser)")
 	}
-	if strings.Contains(rawURL, "/learn/kaopei-") {
-		return nil, fmt.Errorf("icourse163 kaopei- URLs use the Kaoyan flow which isn't implemented yet")
+
+	c := newClient(opts.Cookies)
+	if column, ok := parseColumnURL(rawURL); ok {
+		return extractColumn(c, column)
+	}
+	if ky, ok := parseKaoyanURL(rawURL); ok {
+		return extractKaoyan(c, ky)
 	}
 
-	m := urlRe.FindStringSubmatch(rawURL)
+	m := moocURLRe.FindStringSubmatch(rawURL)
 	if m == nil {
 		return nil, fmt.Errorf("cannot parse icourse163 URL: %s", rawURL)
 	}
-	moocPrefix := m[urlRe.SubexpIndex("mooc")]
+	moocPrefix := m[moocURLRe.SubexpIndex("mooc")]
 	if moocPrefix != "" && !strings.HasSuffix(moocPrefix, "/") {
 		moocPrefix += "/"
 	}
-	cid := m[urlRe.SubexpIndex("cid")]
-	termID := m[urlRe.SubexpIndex("tid")]
-
-	c := newClient(opts.Cookies)
+	cid := m[moocURLRe.SubexpIndex("cid")]
+	termID := m[moocURLRe.SubexpIndex("tid")]
 
 	pageURL := fmt.Sprintf("https://www.icourse163.org/%scourse/%s", moocPrefix, cid)
 	if termID != "" {
@@ -112,18 +132,10 @@ func (i *ICourse163) Extract(rawURL string, opts *extractor.ExtractOpts) (*extra
 		return nil, fmt.Errorf("cannot find termId for %s (course unavailable or not logged in)", cid)
 	}
 
-	title := match1(page, `<meta\s+itemprop="name"\s+content="([^"]+)"\s*/?>`)
-	if title == "" {
-		title = "icourse163_" + cid
-	}
-
-	memberID := match1(page, `id\s*:\s*"(\d+)",\s*nickName\s*:\s*"`)
-	if memberID == "" {
-		home, err := c.GetString(homeURL, headers())
-		if err != nil {
-			return nil, fmt.Errorf("fetch home for member id: %w", err)
-		}
-		memberID = match1(home, `id\s*:\s*"(\d+)",\s*nickName\s*:\s*"`)
+	title := titleFromPage(page, "icourse163_"+cid)
+	memberID, err := fetchMemberID(c, page)
+	if err != nil {
+		return nil, err
 	}
 
 	chapters, err := fetchChapters(c, termID)
@@ -134,40 +146,9 @@ func (i *ICourse163) Extract(rawURL string, opts *extractor.ExtractOpts) (*extra
 		return nil, fmt.Errorf("no chapters in course %s/%s (purchase required?)", cid, termID)
 	}
 
-	var entries []*extractor.MediaInfo
-	var firstErr error
-	for ci, ch := range chapters {
-		for li, ls := range ch.lessons {
-			for ui, vu := range ls.videos {
-				ps, err := fetchVideoStream(c, vu, memberID)
-				if err != nil || ps.url == "" {
-					if err != nil && firstErr == nil {
-						firstErr = err
-					}
-					continue
-				}
-				name := fmt.Sprintf("%02d.%02d.%02d %s", ci+1, li+1, ui+1, sanitize(vu.name))
-				entries = append(entries, &extractor.MediaInfo{
-					Site:  "icourse163",
-					Title: name,
-					Streams: map[string]extractor.Stream{
-						ps.format: {
-							Quality: ps.quality,
-							URLs:    []string{ps.url},
-							Format:  ps.format,
-							Headers: map[string]string{"Referer": referer},
-						},
-					},
-					Subtitles: ps.subs,
-				})
-			}
-		}
-	}
-	if len(entries) == 0 {
-		if firstErr != nil {
-			return nil, fmt.Errorf("no playable videos found (course locked or already ended): %w", firstErr)
-		}
-		return nil, fmt.Errorf("no playable videos found (course locked or already ended)")
+	entries, err := entriesFromChapters(c, chapters, memberID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &extractor.MediaInfo{
@@ -199,6 +180,84 @@ func match1(s, pat string) string {
 		return m[1]
 	}
 	return ""
+}
+
+func decodeJSON(body string, v any) error {
+	dec := json.NewDecoder(bytes.NewBufferString(body))
+	dec.UseNumber()
+	return dec.Decode(v)
+}
+
+func titleFromPage(page, fallback string) string {
+	if title := match1(page, `courseName\s*:\s*'([^']+)'`); title != "" {
+		return sanitize(title)
+	}
+	if title := match1(page, `<meta\s+itemprop="name"\s+content="([^"]+)"\s*/?>`); title != "" {
+		return sanitize(title)
+	}
+	return fallback
+}
+
+func memberIDFromPage(page string) string {
+	if id := match1(page, `userId=(\d+)`); id != "" {
+		return id
+	}
+	return match1(page, `id\s*:\s*"(\d+)",\s*nickName\s*:\s*"`)
+}
+
+func fetchMemberID(c *util.Client, page string) (string, error) {
+	if memberID := memberIDFromPage(page); memberID != "" {
+		return memberID, nil
+	}
+	home, err := c.GetString(homeURL, headers())
+	if err != nil {
+		return "", fmt.Errorf("fetch home for member id: %w", err)
+	}
+	return memberIDFromPage(home), nil
+}
+
+func entriesFromChapters(c *util.Client, chapters []chapter, memberID string) ([]*extractor.MediaInfo, error) {
+	var entries []*extractor.MediaInfo
+	var firstErr error
+	for ci, ch := range chapters {
+		for li, ls := range ch.lessons {
+			for ui, vu := range ls.videos {
+				ps, err := fetchVideoStream(c, vu, memberID, false)
+				if err != nil || ps.url == "" {
+					if err != nil && firstErr == nil {
+						firstErr = err
+					}
+					continue
+				}
+				name := fmt.Sprintf("%02d.%02d.%02d %s", ci+1, li+1, ui+1, sanitize(vu.name))
+				entries = append(entries, mediaEntry(name, ps))
+			}
+		}
+	}
+	if len(entries) == 0 {
+		if firstErr != nil {
+			return nil, fmt.Errorf("no playable videos found (course locked or already ended): %w", firstErr)
+		}
+		return nil, fmt.Errorf("no playable videos found (course locked or already ended)")
+	}
+	return entries, nil
+}
+
+func mediaEntry(name string, ps pickedStream) *extractor.MediaInfo {
+	return &extractor.MediaInfo{
+		Site:  "icourse163",
+		Title: name,
+		Streams: map[string]extractor.Stream{
+			ps.format: {
+				Quality: ps.quality,
+				URLs:    []string{ps.url},
+				Format:  ps.format,
+				Size:    ps.size,
+				Headers: map[string]string{"Referer": referer},
+			},
+		},
+		Subtitles: ps.subs,
+	}
 }
 
 var sanitizeRe = regexp.MustCompile(`[\\/:*?"<>|\r\n\t]+`)
@@ -280,10 +339,11 @@ func dwrData(method string, override map[string]string) map[string]string {
 
 type pickedStream struct {
 	url, format, quality string
+	size                 int64
 	subs                 []extractor.Subtitle
 }
 
-func fetchVideoStream(c *util.Client, v videoUnit, memberID string) (pickedStream, error) {
+func fetchVideoStream(c *util.Client, v videoUnit, memberID string, isLive bool) (pickedStream, error) {
 	body, err := c.PostForm(parseURL, dwrData("getLessonUnitLearnVo", map[string]string{
 		"c0-param0": "number:" + v.contentID,
 		"c0-param1": "number:" + v.contentType,
@@ -297,11 +357,27 @@ func fetchVideoStream(c *util.Client, v videoUnit, memberID string) (pickedStrea
 	for _, q := range []string{"Shd", "Hd", "Sd"} {
 		re := regexp.MustCompile(`mp4` + q + `Url="([^"]+\.mp4[^"]*)"`)
 		if m := re.FindStringSubmatch(body); len(m) > 1 {
-			return pickedStream{url: m[1], format: "mp4", quality: q}, nil
+			return pickedStream{url: m[1], format: "mp4", quality: q, subs: subtitleFromSourceText(body)}, nil
 		}
 	}
 
-	if memberID == "" || v.contentType != "1" {
+	signID := v.unitID
+	if signID == "" {
+		signID = v.contentID
+	}
+	return fetchSignedVideoStream(c, signID, v.contentType, memberID, isLive)
+}
+
+func subtitleFromSourceText(body string) []extractor.Subtitle {
+	subURL := match1(body, `name=".+?";[\s\S]*?url="(https?://[^"]+)"`)
+	if subURL == "" {
+		return nil
+	}
+	return []extractor.Subtitle{{Language: "zh", URL: subURL, Format: "srt"}}
+}
+
+func fetchSignedVideoStream(c *util.Client, signID, contentType, memberID string, isLive bool) (pickedStream, error) {
+	if memberID == "" || signID == "" {
 		return pickedStream{}, fmt.Errorf("no direct mp4 and cannot sign vod request")
 	}
 
@@ -314,7 +390,11 @@ func fetchVideoStream(c *util.Client, v videoUnit, memberID string) (pickedStrea
 		ts = strconv.FormatInt(time.Now().UnixMilli(), 10)
 	}
 
-	signID, bizType, videoType := v.contentID, "1", v.contentType
+	bizType := "1"
+	if isLive {
+		bizType = "101"
+	}
+	videoType := contentType
 	sign := util.MD5(signID + bizType + ts + "88" + videoType + "mooc" + memberID)
 
 	signBody, err := c.PostForm(signatureURL+srckey, map[string]string{
@@ -336,7 +416,7 @@ func fetchVideoStream(c *util.Client, v videoUnit, memberID string) (pickedStrea
 			} `json:"videoSignDto"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal([]byte(signBody), &sig); err != nil {
+	if err := decodeJSON(signBody, &sig); err != nil {
 		return pickedStream{}, fmt.Errorf("parse signature: %w", err)
 	}
 	if sig.Result.VideoSignDto.Signature == "" {
@@ -358,6 +438,7 @@ func fetchVideoStream(c *util.Client, v videoUnit, memberID string) (pickedStrea
 				Format   string `json:"format"`
 				Quality  int    `json:"quality"`
 				VideoURL string `json:"videoUrl"`
+				Size     int64  `json:"size"`
 				E        bool   `json:"e"`
 			} `json:"videos"`
 			SrtCaptions []struct {
@@ -366,29 +447,36 @@ func fetchVideoStream(c *util.Client, v videoUnit, memberID string) (pickedStrea
 			} `json:"srtCaptions"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal([]byte(vidBody), &vinfo); err != nil {
+	if err := decodeJSON(vidBody, &vinfo); err != nil {
 		return pickedStream{}, fmt.Errorf("parse vod: %w", err)
 	}
 
 	best := struct {
 		url, fmt string
 		q        int
+		size     int64
 	}{q: -1}
-	for _, vd := range vinfo.Result.Videos {
-		if vd.E {
-			continue
+	for _, preferred := range []string{"mp4", "hls"} {
+		for _, vd := range vinfo.Result.Videos {
+			if vd.E || vd.Format != preferred {
+				continue
+			}
+			if vd.Quality > best.q {
+				best.url = vd.VideoURL
+				best.fmt = vd.Format
+				best.q = vd.Quality
+				best.size = vd.Size
+			}
 		}
-		if vd.Quality > best.q {
-			best.url = vd.VideoURL
-			best.fmt = vd.Format
-			best.q = vd.Quality
+		if best.url != "" {
+			break
 		}
 	}
 	if best.url == "" {
 		return pickedStream{}, fmt.Errorf("no playable video in vod result")
 	}
 
-	out := pickedStream{url: best.url, format: "mp4", quality: strconv.Itoa(best.q)}
+	out := pickedStream{url: best.url, format: "mp4", quality: strconv.Itoa(best.q), size: best.size}
 	if best.fmt == "hls" {
 		out.format = "m3u8"
 	}
