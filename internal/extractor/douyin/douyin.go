@@ -89,7 +89,10 @@ func (d *Douyin) Extract(url string, opts *extractor.ExtractOpts) (*extractor.Me
 }
 
 func getTTWID() string {
-	req, _ := http.NewRequest("POST", twidRegister, strings.NewReader(twidBody))
+	req, err := http.NewRequest("POST", twidRegister, strings.NewReader(twidBody))
+	if err != nil {
+		return ""
+	}
 	req.Header.Set("User-Agent", uaIOS)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -112,7 +115,10 @@ func resolve(rawURL string, ttwid string) (map[string]interface{}, error) {
 	awemeID := extractID(rawURL)
 
 	if shortRe.MatchString(rawURL) {
-		req, _ := http.NewRequest("GET", rawURL, nil)
+		req, err := http.NewRequest("GET", rawURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
 		req.Header.Set("User-Agent", uaIOS)
 		if ttwid != "" {
 			req.AddCookie(&http.Cookie{Name: "ttwid", Value: ttwid})
@@ -135,7 +141,10 @@ func resolve(rawURL string, ttwid string) (map[string]interface{}, error) {
 	}
 
 	shareURL := fmt.Sprintf(shareTemplate, awemeID)
-	req, _ := http.NewRequest("GET", shareURL, nil)
+	req, err := http.NewRequest("GET", shareURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create share request: %w", err)
+	}
 	req.Header.Set("User-Agent", uaIOS)
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 	if ttwid != "" {
@@ -288,7 +297,10 @@ func buildStreams(videoID string) map[string]extractor.Stream {
 }
 
 func probeSize(client *util.Client, url string, headers map[string]string) int64 {
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0
+	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
