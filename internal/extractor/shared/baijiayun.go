@@ -3,13 +3,13 @@
 //
 // Baijiayun has two playback flows (from Baijiayun_Video.pyc constants):
 //
-//   Live replay:
-//     GET https://api.baijiayun.com/web/playback/getPlayInfo
-//          ?room_id={room_id}&token={token}&use_encrypt=0&render=jsonp
+//	Live replay:
+//	  GET https://api.baijiayun.com/web/playback/getPlayInfo
+//	       ?room_id={room_id}&token={token}&use_encrypt=0&render=jsonp
 //
-//   VOD playback:
-//     GET https://www.baijiayun.com/vod/video/getPlayUrl
-//          ?vid={video_id}&render=jsonp&token={token}&use_encrypt=0
+//	VOD playback:
+//	  GET https://www.baijiayun.com/vod/video/getPlayUrl
+//	       ?vid={video_id}&render=jsonp&token={token}&use_encrypt=0
 //
 // Both endpoints return JSONP with the JSON payload wrapped in `(...)`. We
 // strip the wrapper and parse the inner JSON.
@@ -44,6 +44,8 @@ type BaijiayunPlaybackResponse struct {
 	Data struct {
 		PlaybackURL string           `json:"playback_url"`
 		VideoURL    string           `json:"video_url"`
+		PlayURL     string           `json:"play_url"`
+		URL         string           `json:"url"`
 		Title       string           `json:"title"`
 		Videos      []BaijiayunVideo `json:"video"` // VOD format
 	} `json:"data"`
@@ -66,6 +68,12 @@ func BaijiayunResolveVOD(c *util.Client, vid, token string, headers map[string]s
 	}
 	if resp.Data.VideoURL != "" {
 		return resp.Data.VideoURL, nil
+	}
+	if resp.Data.PlayURL != "" {
+		return resp.Data.PlayURL, nil
+	}
+	if resp.Data.URL != "" {
+		return resp.Data.URL, nil
 	}
 	if len(resp.Data.Videos) > 0 {
 		return resp.Data.Videos[0].URL, nil
