@@ -114,6 +114,9 @@ func (y *Yixiaoerguo) Extract(rawURL string, opts *extractor.ExtractOpts) (*extr
 
 func parseCID(raw string) string {
 	m := cidRe.FindStringSubmatch(raw)
+	if len(m) == 0 {
+		return ""
+	}
 	for _, s := range m[1:] {
 		if s != "" {
 			return s

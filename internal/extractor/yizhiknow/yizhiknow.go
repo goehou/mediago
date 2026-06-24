@@ -110,6 +110,9 @@ func (s *Yizhiknow) Extract(rawURL string, opts *extractor.ExtractOpts) (*extrac
 
 func parseCID(raw string) string {
 	m := cidRe.FindStringSubmatch(raw)
+	if len(m) == 0 {
+		return ""
+	}
 	for _, v := range m[1:] {
 		if v != "" {
 			return v
