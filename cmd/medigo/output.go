@@ -80,6 +80,10 @@ func simulatef(format string, args ...any) {
 	writeColoredLine(os.Stdout, ansiGreen, "[simulate] "+format, args...)
 }
 
+func downloadItemMessage(itemIndex, totalItems int, title string) string {
+	return fmt.Sprintf("[download] Downloading item %d of %d: %s", itemIndex, totalItems, title)
+}
+
 func printFormats(info *extractor.MediaInfo) error {
 	reportInfof("Available formats for: %s", info.Title)
 

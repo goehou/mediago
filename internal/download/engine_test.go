@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,5 +91,64 @@ func TestDownloadSingleCancelRemovesPart(t *testing.T) {
 	}
 	if _, err := os.Stat(outPath + ".part"); !os.IsNotExist(err) {
 		t.Fatalf("part file still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestDownloadSegmentsCancelRemovesTempDir(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TMPDIR", root)
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		flusher, _ := w.(http.Flusher)
+		for i := 0; i < 128; i++ {
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+			}
+			if _, err := w.Write([]byte(strings.Repeat("x", 8192))); err != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	engine := New(Opts{OutputDir: root, Overwrite: true, NoProgress: true, Context: ctx})
+	outPath := filepath.Join(root, "video.mp4")
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- engine.downloadSegments([]string{server.URL, server.URL}, outPath, nil, 0)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("server did not receive request")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("downloadSegments returned nil error after cancellation")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("downloadSegments did not return after cancellation")
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("ReadDir root: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "medigo-seg-") {
+			t.Fatalf("temporary directory still present: %s", entry.Name())
+		}
 	}
 }

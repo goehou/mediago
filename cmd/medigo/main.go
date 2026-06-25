@@ -317,7 +317,7 @@ func processURL(ctx context.Context, url string) error {
 }
 
 func downloadEntry(ctx context.Context, itemIndex, totalItems int, info *extractor.MediaInfo) error {
-	downloadf("Downloading item %d of %d: %s", itemIndex+1, totalItems, firstNonEmpty(info.Title, fmt.Sprintf("item-%d", itemIndex+1)))
+	downloadf("%s", downloadItemMessage(itemIndex+1, totalItems, firstNonEmpty(info.Title, fmt.Sprintf("item-%d", itemIndex+1))))
 	return downloadOne(ctx, info)
 }
 
