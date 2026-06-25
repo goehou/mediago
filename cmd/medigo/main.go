@@ -318,8 +318,10 @@ func processURL(ctx context.Context, url string) error {
 
 func downloadEntry(ctx context.Context, itemIndex, totalItems int, info *extractor.MediaInfo) error {
 	downloadf("%s", downloadItemMessage(itemIndex+1, totalItems, firstNonEmpty(info.Title, fmt.Sprintf("item-%d", itemIndex+1))))
-	return downloadOne(ctx, info)
+	return downloadOneFn(ctx, info)
 }
+
+var downloadOneFn = downloadOne
 
 func downloadOne(ctx context.Context, info *extractor.MediaInfo) error {
 	if listFormats {
