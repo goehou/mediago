@@ -275,6 +275,14 @@ func processURL(ctx context.Context, url string) error {
 
 	if info.IsPlaylist() {
 		infof("Playlist: %s (%d items)", info.Title, len(info.Entries))
+		if !downloadAll {
+			warnf("Downloading only the first item. Use --yes-playlist to download all.")
+			if len(info.Entries) > 0 && info.Entries[0] != nil {
+				infof("%s", info.Entries[0].Title)
+				return downloadEntry(ctx, 0, 1, info.Entries[0])
+			}
+			return fmt.Errorf("playlist is empty")
+		}
 		if listFormats {
 			warnf("use a single-item URL with -F to inspect formats")
 			return nil

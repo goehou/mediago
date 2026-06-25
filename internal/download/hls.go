@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,7 +52,9 @@ func (e *Engine) downloadHLS(filename string, stream extractor.Stream) (string, 
 		if err := e.downloadHLSSegments(segments, tsPath, stream.Headers); err != nil {
 			return "", err
 		}
-		os.Rename(tsPath, outPath)
+		if err := os.Rename(tsPath, outPath); err != nil {
+			return "", err
+		}
 		return outPath, nil
 	}
 
@@ -68,8 +71,12 @@ func (e *Engine) downloadHLS(filename string, stream extractor.Stream) (string, 
 	if err != nil {
 		return "", err
 	}
-	os.Rename(filepath.Join(e.opts.OutputDir, filename+".mp4.ts"), tsPath)
-	os.Rename(tsPath, outPath)
+	if err := os.Rename(filepath.Join(e.opts.OutputDir, filename+".mp4.ts"), tsPath); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tsPath, outPath); err != nil {
+		return "", err
+	}
 	return outPath, nil
 }
 
@@ -607,38 +614,41 @@ func (e *Engine) muxDASH(videoPath, audioPath, outPath string, hasAudio bool) er
 }
 
 func SelectBestStream(streams map[string]extractor.Stream, preferred string) (string, extractor.Stream) {
+	if len(streams) == 0 {
+		return "", extractor.Stream{}
+	}
+	keys := make([]string, 0, len(streams))
+	for k := range streams {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	if preferred == "worst" {
 		priorities := []string{"360p", "480p", "720p", "1080p"}
 		for _, q := range priorities {
-			for k, s := range streams {
-				if s.Quality == q {
-					return k, s
+			for _, k := range keys {
+				if streams[k].Quality == q {
+					return k, streams[k]
 				}
 			}
 		}
-		for k, s := range streams {
-			return k, s
-		}
-		return "", extractor.Stream{}
+		return keys[0], streams[keys[0]]
 	}
 
 	if preferred != "" && preferred != "best" {
-		for k, s := range streams {
-			if s.Quality == preferred {
-				return k, s
+		for _, k := range keys {
+			if streams[k].Quality == preferred {
+				return k, streams[k]
 			}
 		}
 	}
 	priorities := []string{"1080p", "720p", "480p", "360p"}
 	for _, q := range priorities {
-		for k, s := range streams {
-			if s.Quality == q {
-				return k, s
+		for _, k := range keys {
+			if streams[k].Quality == q {
+				return k, streams[k]
 			}
 		}
 	}
-	for k, s := range streams {
-		return k, s
-	}
-	return "", extractor.Stream{}
+	return keys[0], streams[keys[0]]
 }

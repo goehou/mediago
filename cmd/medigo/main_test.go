@@ -34,15 +34,18 @@ func TestProcessURLPlaylistOutputsExtractionAndDownloadCounts(t *testing.T) {
 	oldDumpJSON := dumpJSON
 	oldListFormats := listFormats
 	oldDownloadOne := downloadOneFn
+	oldDownloadAll := downloadAll
 	simulate = false
 	dumpJSON = false
 	listFormats = false
+	downloadAll = true
 	downloadOneFn = func(ctx context.Context, info *extractor.MediaInfo) error { return nil }
 	t.Cleanup(func() {
 		simulate = oldSimulate
 		dumpJSON = oldDumpJSON
 		listFormats = oldListFormats
 		downloadOneFn = oldDownloadOne
+		downloadAll = oldDownloadAll
 	})
 
 	stdout, stderr := captureStdStreams(t, func() {
