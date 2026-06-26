@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Download videos from 90+ Chinese educational platforms. Single binary, cross-platform.</strong>
+  <strong>Media downloader for Chinese internet. 90+ sites, single binary.</strong>
 </p>
 
 <p align="center">
@@ -17,18 +17,26 @@
 
 ## Install
 
-```bash
-# Go install (requires Go 1.25+)
-go install github.com/nichuanfang/medigo/cmd/medigo@latest
+### Download binary (recommended)
 
-# Or download binary from releases
-# https://github.com/nichuanfang/medigo/releases
+Grab the latest release for your platform:
+
+```bash
+# Linux
+curl -L https://github.com/Sophomoresty/medigo/releases/latest/download/medigo_linux_amd64.tar.gz | tar xz
+sudo mv medigo_linux_amd64 /usr/local/bin/medigo
+
+# macOS (Apple Silicon)
+curl -L https://github.com/Sophomoresty/medigo/releases/latest/download/medigo_macos_arm64.tar.gz | tar xz
+sudo mv medigo_macos_arm64 /usr/local/bin/medigo
+
+# Windows — download .zip from releases page
 ```
 
 ### Build from source
 
 ```bash
-git clone https://github.com/nichuanfang/medigo.git
+git clone https://github.com/Sophomoresty/medigo.git
 cd medigo && make build
 ```
 
