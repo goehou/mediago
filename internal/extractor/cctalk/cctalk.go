@@ -273,10 +273,16 @@ func (a *apiClient) getVideoPlayInfo(videoID, seriesID string) map[string]any {
 	for _, version := range []string{"v1.1", "v1.2"} {
 		data := asMap(extractData(a.requestAPI("/video/detail", map[string]string{"videoId": videoID, "seriesId": seriesID}, "", version)))
 		out = mergeMaps(out, data)
+		if findMediaURL(out) != "" {
+			return out
+		}
 	}
 	for _, version := range []string{"v1.1", "v1.2"} {
 		data := asMap(extractData(a.requestAPI("/video/play", map[string]string{"videoId": videoID}, "post", version)))
 		out = mergeMaps(out, data)
+		if findMediaURL(out) != "" {
+			return out
+		}
 	}
 	return out
 }
@@ -300,12 +306,12 @@ func buildEntriesFlat(a *apiClient, structs any, fallback ids, courseMeta map[st
 		if _, ok := merged["groupId"]; !ok && fallback.GroupID != "" {
 			merged = mergeMaps(map[string]any{"groupId": fallback.GroupID}, merged)
 		}
-		if findMediaURL(merged) == "" && !hasDownloadableResource(merged) && lessonID != "" && a != nil && a.c != nil {
+		if findMediaURL(merged) == "" && lessonID != "" && a != nil && a.c != nil {
 			if detail := a.getLessonInfo(lessonID); len(detail) > 0 {
 				merged = mergeMaps(merged, detail)
 			}
 		}
-		if findMediaURL(merged) == "" && !hasDownloadableResource(merged) && videoID != "" && a != nil && a.c != nil {
+		if findMediaURL(merged) == "" && videoID != "" && a != nil && a.c != nil {
 			merged = mergeMaps(merged, a.getVideoPlayInfo(videoID, seriesID))
 		}
 		if len(courseMeta) > 0 {
@@ -532,8 +538,24 @@ func mergeMaps(left, right map[string]any) map[string]any {
 
 func textValue(m map[string]any, keys ...string) string {
 	for _, k := range keys {
-		if v := fmt.Sprint(m[k]); v != "" && v != "<nil>" {
-			return v
+		switch v := m[k].(type) {
+		case nil:
+			continue
+		case string:
+			if v != "" {
+				return v
+			}
+		case float64:
+			if v == float64(int64(v)) {
+				return fmt.Sprintf("%d", int64(v))
+			}
+			return fmt.Sprintf("%g", v)
+		case json.Number:
+			return v.String()
+		default:
+			if s := fmt.Sprint(v); s != "" && s != "<nil>" {
+				return s
+			}
 		}
 	}
 	return ""
