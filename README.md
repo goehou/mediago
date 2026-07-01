@@ -191,12 +191,18 @@ Pull requests welcome. Please ensure `go build ./...`, `go vet ./...`, and `go t
 
 ### v0.4 — Platform expansion
 
-- [ ] Complete courseware/material download for remaining ~11 sites
 - [ ] Douyin paid content
 - [ ] Kuaishou
 - [ ] Xiaohongshu (RedNote)
 - [ ] WeChat Channels (视频号)
 - [ ] Bilibili bangumi geo-bypass
+
+## Known issues
+
+- Some sites require login cookies to access paid/premium content — use `--cookies` or `--cookies-from-browser`
+- Whiteboard/canvas replay content (eoffcn, houdu) extracts the video stream only; local rendering is not supported
+- A few sites with client-side decryption (AliyunVoDEncryption) may require additional key negotiation that is not fully automated
+- Rate limiting on some platforms may cause intermittent failures — retry or use `--proxy`
 
 ## Disclaimer
 
@@ -205,3 +211,14 @@ This project is released under [The Unlicense](LICENSE) into the public domain a
 ## License
 
 [The Unlicense](LICENSE) — released into the public domain.
+
+---
+
+## Acknowledgements
+
+Development agent capabilities powered by [GenericAgent](https://github.com/lsdefine/GenericAgent).
+
+### 🚩 Links
+
+[![GenericAgent](https://img.shields.io/badge/Agent_Framework-GenericAgent-orange?style=for-the-badge&logo=github)](https://github.com/lsdefine/GenericAgent)
+[![LinuxDo](https://img.shields.io/badge/Community-LinuxDo-blue?style=for-the-badge)](https://linux.do/)
