@@ -83,6 +83,7 @@ import (
 	_ "github.com/Sophomoresty/mediago/internal/extractor/xuelang"
 	_ "github.com/Sophomoresty/mediago/internal/extractor/xuetang"
 	_ "github.com/Sophomoresty/mediago/internal/extractor/yangcong"
+	_ "github.com/Sophomoresty/mediago/internal/extractor/yangshipin"
 	_ "github.com/Sophomoresty/mediago/internal/extractor/yikaobang"
 	_ "github.com/Sophomoresty/mediago/internal/extractor/yixiaoerguo"
 	_ "github.com/Sophomoresty/mediago/internal/extractor/yizhiknow"
